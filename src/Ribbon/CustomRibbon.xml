@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui" onLoad="Ribbon_Load">
+  <ribbon>
+    <tabs>
+      <tab id="tabExcelTool" label="日常工具">
+        <group id="grpText" label="文本添加">
+          <button id="btnTextBefore" label="前面添加" onAction="OnTextBefore" imageMso="TextDirectionRightToLeft" size="normal" screentip="前面添加" supertip="在多个单元格前面添加输入的文本" />
+          <button id="btnTextAfter" label="末尾添加" onAction="OnTextAfter" imageMso="TextDirectionLeftToRight" size="normal" screentip="末尾添加" supertip="在多个单元格末尾添加输入的文本" />
+          <button id="btnTextMid" label="中间添加" onAction="OnTextMid" imageMso="TextDirectionContext" size="normal" screentip="中间添加" supertip="在多个单元格中间添加输入的文本" />
+        </group>
+        <group id="grpSheet" label="表格处理">
+          <button id="btnSplitSheet" label="按列拆分成表" onAction="OnSplitSheet" imageMso="TraceDependents" size="large" screentip="按列拆分成表" supertip="选择单元格后，以此列为基准拆分为独立的表" />
+          <button id="btnSplitFile" label="拆分表为独立文件" onAction="OnSplitFile" imageMso="ViewSideBySide" size="large" screentip="拆分表为独立文件" supertip="将每个Sheet页单独存储为文件" />
+          <button id="btnUnhide" label="取消隐藏工作表" onAction="OnUnhide" imageMso="WatchWindow" size="large" screentip="取消隐藏工作表" supertip="批量取消隐藏的工作表" />
+        </group>
+        <group id="grpShape" label="图形处理">
+          <button id="btnDelShape" label="删除图形" onAction="OnDelShape" imageMso="ShapesInsertGallery" size="large" screentip="删除图形" supertip="删除选择的相应类型的图形（图片，批注等）" />
+          <button id="btnComment" label="批注位置大小" onAction="OnComment" imageMso="PageSizeGallery" size="large" screentip="批注位置大小" supertip="改到插入批注单元格右上侧，相应调整大小" />
+        </group>
+        <group id="grpView" label="视图辅助">
+          <toggleButton id="btnSpotlight" label="聚光灯" onAction="OnSpotlightToggle" getPressed="GetSpotlightPressed" getImage="GetSpotlightImage" size="large" screentip="聚光灯" supertip="高亮选中单元格所在的行和列，方便定位数据" />
+        </group>
+        <group id="grpAbout" label="关于">
+          <button id="btnAbout" getLabel="GetVersionLabel" onAction="OnAbout" imageMso="Info" size="large" screentip="关于" supertip="显示插件版本和相关信息" />
+        </group>
+      </tab>
+    </tabs>
+  </ribbon>
+</customUI>

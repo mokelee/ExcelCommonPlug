@@ -1,0 +1,47 @@
+@echo off
+chcp 65001 >nul 2>&1
+:: Build and launch Excel with add-in (32-bit)
+
+:: Close Excel if running
+tasklist /FI "IMAGENAME eq EXCEL.EXE" 2>nul | find /I "EXCEL.EXE" >nul
+if %ERRORLEVEL% EQU 0 (
+    echo [0] Closing Excel...
+    taskkill /IM EXCEL.EXE /F >nul 2>&1
+    timeout /t 2 /nobreak >nul
+)
+
+:: Remove installed version registry to avoid conflict with debug
+setlocal enabledelayedexpansion
+for %%V in (14.0 15.0 16.0) do (
+    set "REGKEY=HKCU\Software\Microsoft\Office\%%V\Excel\Options"
+    for /L %%i in (0,1,20) do (
+        if %%i==0 (set "VALNAME=OPEN") else (set "VALNAME=OPEN%%i")
+        for /f "tokens=2,*" %%a in ('reg query "!REGKEY!" /v "!VALNAME!" 2^>nul ^| findstr REG_SZ') do (
+            echo %%b | findstr /i "ExcelCommonTools" >nul
+            if !errorlevel! equ 0 (
+                echo     Removing installed addin reg: %%V\!VALNAME!
+                reg delete "!REGKEY!" /v "!VALNAME!" /f >nul 2>&1
+            )
+        )
+    )
+)
+endlocal
+
+:: Read version from config.iss
+set VERSION=1.0.0
+for /f "tokens=3" %%a in ('findstr /c:"#define MyAppVersion" installer\config.iss') do (
+    set "VERSION=%%~a"
+)
+
+:: Build
+echo [1/2] Building (v%VERSION%)...
+dotnet build src\ExcelCommonTools.csproj -c Debug --no-incremental /p:Version=%VERSION%
+if %ERRORLEVEL% NEQ 0 (
+    echo Build FAILED!
+    pause
+    exit /b 1
+)
+
+:: Launch Excel
+echo [2/2] Starting Excel with add-in...
+start "" "C:\PROGRA~2\MICROS~2\Office16\EXCEL.EXE" /x "%~dp0src\bin\Debug\net48\ExcelCommonTools-AddIn.xll" "D:\Excel插件测试\Excel插件测试文件.xlsx"

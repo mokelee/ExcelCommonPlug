@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../CodeCompany/UpdateServer"
+		},
+		{
+			"path": "../UpdateClient"
+		},
+		{
+			"path": "../VBA"
+		}
+	],
+	"settings": {}
+}

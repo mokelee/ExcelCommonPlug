@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <RootNamespace>ExcelCommonTools</RootNamespace>
+    <AssemblyName>ExcelCommonTools</AssemblyName>
+    <OutputType>Library</OutputType>
+    <LangVersion>latest</LangVersion>
+    <UseWindowsForms>true</UseWindowsForms>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <!-- 禁用 Excel-DNA 打包（避免杀毒误报） -->
+    <ExcelDnaPackCompressedResources>false</ExcelDnaPackCompressedResources>
+    <RunExcelDnaPack>false</RunExcelDnaPack>
+  </PropertyGroup>
+
+  <!-- Excel-DNA -->
+  <ItemGroup>
+    <PackageReference Include="ExcelDna.AddIn" Version="1.8.0" />
+  </ItemGroup>
+
+  <!-- NuGet packages -->
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="6.0.11" />
+  </ItemGroup>
+
+  <!-- Office Interop -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Office.Interop.Excel" Version="15.0.4795.1001">
+      <EmbedInteropTypes>true</EmbedInteropTypes>
+    </PackageReference>
+    <PackageReference Include="MicrosoftOfficeCore" Version="15.0.0">
+      <EmbedInteropTypes>true</EmbedInteropTypes>
+    </PackageReference>
+    <PackageReference Include="stdole" Version="7.0.3303">
+      <EmbedInteropTypes>true</EmbedInteropTypes>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- Suppress version mismatch: Excel 16 references Office 16, but MicrosoftOfficeCore only has 15 -->
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);CS1705</NoWarn>
+    <WarningsNotAsErrors>CS1705</WarningsNotAsErrors>
+    <ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>None</ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>
+  </PropertyGroup>
+
+  <!-- Framework references -->
+  <ItemGroup>
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
+
+  <!-- Embedded resources -->
+  <ItemGroup>
+    <EmbeddedResource Include="Ribbon\CustomRibbon.xml" />
+    <EmbeddedResource Include="Resources\spotlight.png" />
+  </ItemGroup>
+
+  <!-- Excel-DNA .dna file -->
+  <ItemGroup>
+    <None Include="ExcelCommonTools-AddIn.dna" Pack="false" />
+  </ItemGroup>
+
+</Project>
