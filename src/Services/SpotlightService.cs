@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -12,6 +12,7 @@ namespace ExcelCommonTools.Services
     /// <summary>
     /// 聚光灯服务：通过半透明覆盖层高亮选中单元格所在的行和列。
     /// 不修改工作簿任何内容，纯视觉效果。
+    /// 支持普通模式、冻结窗格模式和拆分窗格模式。
     /// </summary>
     public class SpotlightService
     {
@@ -24,6 +25,8 @@ namespace ExcelCommonTools.Services
         private double _zoom;
 
         private static readonly Color HighlightColor = Color.FromArgb(60, 0xA1, 0xD6, 0x68);
+        private string _lastLogKey = "";
+        private bool _shouldLog;
 
         public SpotlightService(Excel.Application app)
         {
@@ -35,6 +38,7 @@ namespace ExcelCommonTools.Services
         public void Enable()
         {
             _isEnabled = true;
+            Logger.Debug("Spotlight", "Enable called");
             if (_overlay == null)
                 _overlay = new SpotlightOverlay();
             _overlay.Show();
@@ -42,7 +46,6 @@ namespace ExcelCommonTools.Services
             _refreshTimer = new Timer { Interval = 100 };
             _refreshTimer.Tick += OnRefreshTick;
             _refreshTimer.Start();
-            UpdateOverlay();
         }
 
         public void Disable()
@@ -58,16 +61,18 @@ namespace ExcelCommonTools.Services
             DisposeBitmap();
             _overlay?.Clear();
             _overlay?.Hide();
+            Logger.Debug("Spotlight", " Disabled");
         }
 
         private void OnSelectionChange(object sh, Excel.Range target)
         {
-            if (_isEnabled) UpdateOverlay();
+            // 选区变化由定时器统一处理
         }
 
         private void OnRefreshTick(object sender, EventArgs e)
         {
-            if (_isEnabled) UpdateOverlay();
+            if (!_isEnabled) return;
+            UpdateOverlay();
         }
 
         private void DisposeBitmap()
@@ -85,7 +90,6 @@ namespace ExcelCommonTools.Services
             {
                 if (_overlay == null || !_isEnabled) return;
 
-                // Excel 非前台时隐藏
                 IntPtr excelHwnd = (IntPtr)_app.Hwnd;
                 IntPtr foreground = NativeMethods.GetForegroundWindow();
                 if (foreground != excelHwnd && NativeMethods.GetAncestor(foreground, 2) != excelHwnd)
@@ -106,16 +110,6 @@ namespace ExcelCommonTools.Services
                     return;
                 }
 
-                Excel.Range visRange = window.VisibleRange;
-                if (visRange == null) return;
-
-                Excel.Range visFirst = (Excel.Range)visRange.Cells[1, 1];
-                double visFirstLeft = Convert.ToDouble(visFirst.Left);
-                double visFirstTop = Convert.ToDouble(visFirst.Top);
-
-                int pts2px_0_x = window.PointsToScreenPixelsX(0);
-                int pts2px_0_y = window.PointsToScreenPixelsY(0);
-
                 IntPtr gridHwnd = NativeMethods.FindExcelGridWindow(excelHwnd);
                 NativeMethods.RECT gridRect = new NativeMethods.RECT();
                 if (gridHwnd != IntPtr.Zero)
@@ -133,37 +127,84 @@ namespace ExcelCommonTools.Services
                 double scaleY = _zoom * dpiY / 72.0;
 
                 Excel.Worksheet activeSheet = _app.ActiveSheet as Excel.Worksheet;
+                if (activeSheet == null) return;
 
-                // Overlay 定位
-                int overlayX = pts2px_0_x + (int)Math.Round(visFirstLeft * scaleX);
-                int overlayY;
-                if (activeSheet != null && visFirst.Row > 1)
+                // 检测拆分/冻结状态
+                bool hasFreezePane = false;
+                bool hasSplit = false;
+                int splitRow = 0;
+                int splitCol = 0;
+                try
                 {
-                    int scrollPixels = AccumulatePixelY(activeSheet, 1, visFirst.Row, scaleY);
-                    overlayY = pts2px_0_y + scrollPixels;
+                    hasFreezePane = window.FreezePanes;
+                    splitRow = window.SplitRow;
+                    splitCol = window.SplitColumn;
+                    hasSplit = !hasFreezePane && (splitRow > 0 || splitCol > 0);
+                }
+                catch { }
+
+                // 生成日志 key，避免重复输出
+                string selAddr = "";
+                try { selAddr = selection.Address; } catch { }
+                string logKey = $"{selAddr}|{hasFreezePane}|{hasSplit}|{splitRow}|{splitCol}|{gridRect.Left},{gridRect.Top}";
+                bool shouldLog = (logKey != _lastLogKey);
+                if (shouldLog)
+                {
+                    _lastLogKey = logKey;
+                    _shouldLog = true;
+                    Logger.Debug("Spotlight", $" --- UpdateOverlay ---");
+                    Logger.Debug("Spotlight", $" Selection={selAddr}, hasFreezePane={hasFreezePane}, hasSplit={hasSplit}, splitRow={splitRow}, splitCol={splitCol}");
                 }
                 else
                 {
-                    overlayY = pts2px_0_y + (int)Math.Round(visFirstTop * scaleY);
+                    _shouldLog = false;
                 }
 
-                // Overlay 尺寸
-                Excel.Range visLast = (Excel.Range)visRange.Cells[visRange.Rows.Count, visRange.Columns.Count];
-                double visLastRight = Convert.ToDouble(visLast.Left) + Convert.ToDouble(visLast.Width);
-                double visLastBottom = Convert.ToDouble(visLast.Top) + Convert.ToDouble(visLast.Height);
-                double totalPtsW = visLastRight - visFirstLeft;
-                double totalPtsH = visLastBottom - visFirstTop;
+                // 确定 overlay 覆盖区域
+                int overlayX, overlayY, overlayW, overlayH;
 
-                int overlayW = (int)Math.Round(totalPtsW * scaleX);
-                int overlayH = gridHwnd != IntPtr.Zero ? (gridRect.Bottom - overlayY) : AccumulatePixelY(activeSheet, visFirst.Row, visFirst.Row + visRange.Rows.Count, scaleY);
-
-                // 边界裁剪
-                if (gridHwnd != IntPtr.Zero)
+                if ((hasFreezePane || hasSplit) && gridHwnd != IntPtr.Zero)
                 {
-                    int maxW = gridRect.Right - overlayX;
-                    int maxH = gridRect.Bottom - overlayY;
-                    if (maxW < overlayW && maxW > 0) overlayW = maxW;
-                    if (maxH < overlayH && maxH > 0) overlayH = maxH;
+                    // overlay 覆盖整个网格窗口
+                    overlayX = gridRect.Left;
+                    overlayY = gridRect.Top;
+                    overlayW = gridRect.Right - gridRect.Left;
+                    overlayH = gridRect.Bottom - gridRect.Top;
+
+                    if (_shouldLog)
+                    {
+                        Logger.Debug("Spotlight", $"Mode=FreezeOrSplit, gridRect=({gridRect.Left},{gridRect.Top},{gridRect.Right},{gridRect.Bottom})");
+                        Logger.Debug("Spotlight", $"Overlay: pos=({overlayX},{overlayY}), size=({overlayW},{overlayH})");
+                    }
+                }
+                else if (gridHwnd != IntPtr.Zero)
+                {
+                    Excel.Range visRange = window.VisibleRange;
+                    if (visRange == null) return;
+                    Excel.Range visFirst = (Excel.Range)visRange.Cells[1, 1];
+                    double visFirstLeft = Convert.ToDouble(visFirst.Left);
+                    double visFirstTop = Convert.ToDouble(visFirst.Top);
+
+                    int pts2px_0_x = window.PointsToScreenPixelsX(0);
+                    int pts2px_0_y = window.PointsToScreenPixelsY(0);
+
+                    overlayX = pts2px_0_x + (int)Math.Round(visFirstLeft * scaleX);
+                    overlayY = pts2px_0_y + (visFirst.Row > 1
+                        ? AccumulatePixelY(activeSheet, 1, visFirst.Row, scaleY)
+                        : (int)Math.Round(visFirstTop * scaleY));
+
+                    overlayW = gridRect.Right - overlayX;
+                    overlayH = gridRect.Bottom - overlayY;
+                    if (_shouldLog)
+                    {
+                        Logger.Debug("Spotlight", $"Mode=Simple, pts2px(0)=({pts2px_0_x},{pts2px_0_y}), visFirst=R{visFirst.Row}C{visFirst.Column}, visFirstLeft={visFirstLeft:F2}, visFirstTop={visFirstTop:F2}");
+                        Logger.Debug("Spotlight", $"Overlay: pos=({overlayX},{overlayY}), size=({overlayW},{overlayH}), gridRect=({gridRect.Left},{gridRect.Top},{gridRect.Right},{gridRect.Bottom})");
+                        Logger.Debug("Spotlight", $"scaleX={scaleX:F4}, scaleY={scaleY:F4}, zoom={_zoom}, dpiScale={_dpiScale:F4}");
+                    }
+                }
+                else
+                {
+                    return;
                 }
 
                 if (overlayW <= 0 || overlayH <= 0) return;
@@ -176,30 +217,16 @@ namespace ExcelCommonTools.Services
                     g.Clear(Color.Transparent);
                     using (var brush = new SolidBrush(HighlightColor))
                     {
-                        foreach (Excel.Range area in selection.Areas)
+                        if (hasFreezePane || hasSplit)
                         {
-                            double aLeft = Convert.ToDouble(area.Left);
-                            double aRight = aLeft + Convert.ToDouble(area.Width);
-
-                            int ax = (int)Math.Round((aLeft - visFirstLeft) * scaleX);
-                            int ax2 = (int)Math.Round((aRight - visFirstLeft) * scaleX);
-                            int aw = ax2 - ax;
-
-                            int ay = AccumulatePixelY(activeSheet, visFirst.Row, area.Row, scaleY);
-                            int ay2 = AccumulatePixelY(activeSheet, visFirst.Row, area.Row + area.Rows.Count, scaleY);
-                            int ah = ay2 - ay;
-
-                            // 行带（全宽，排除选中区域）
-                            if (ax > 0)
-                                g.FillRectangle(brush, 0, ay, ax, ah);
-                            if (ax2 < overlayW)
-                                g.FillRectangle(brush, ax2, ay, overlayW - ax2, ah);
-
-                            // 列带（排除行带重叠和选中区域）
-                            if (ay > 0)
-                                g.FillRectangle(brush, ax, 0, aw, ay);
-                            if (ay2 < overlayH)
-                                g.FillRectangle(brush, ax, ay2, aw, overlayH - ay2);
+                            DrawWithPanes(g, brush, window, activeSheet, selection,
+                                          splitRow, splitCol, hasFreezePane,
+                                          overlayX, overlayY, overlayW, overlayH);
+                        }
+                        else
+                        {
+                            DrawSimple(g, brush, window, activeSheet, selection,
+                                       overlayW, overlayH, scaleX, scaleY);
                         }
                     }
                 }
@@ -209,13 +236,153 @@ namespace ExcelCommonTools.Services
             catch (Exception ex)
             {
                 Debug.WriteLine($"[SpotlightService] UpdateOverlay: {ex.Message}");
+                Logger.Error("Spotlight", $"UpdateOverlay: {ex.Message}", ex);
             }
         }
 
         /// <summary>
-        /// 逐行累加像素高度，匹配 Excel 的像素渲染逻辑：
-        /// 1. baseH = Round(rowH_pts * dpi/72)
-        /// 2. zoomedH = Round(baseH * zoom)
+        /// 无拆分/冻结时的简单绘制逻辑
+        /// </summary>
+        private void DrawSimple(Graphics g, SolidBrush brush,
+            Excel.Window window, Excel.Worksheet sheet, Excel.Range selection,
+            int overlayW, int overlayH, double scaleX, double scaleY)
+        {
+            Excel.Range visRange = window.VisibleRange;
+            Excel.Range visFirst = (Excel.Range)visRange.Cells[1, 1];
+            double visFirstLeft = Convert.ToDouble(visFirst.Left);
+
+            if (_shouldLog) Logger.Debug("Spotlight", $"DrawSimple: visFirst=R{visFirst.Row}C{visFirst.Column}, visFirstLeft={visFirstLeft:F2}, overlayW={overlayW}, overlayH={overlayH}");
+
+            foreach (Excel.Range area in selection.Areas)
+            {
+                double aLeft = Convert.ToDouble(area.Left);
+                double aRight = aLeft + Convert.ToDouble(area.Width);
+
+                int ax = (int)Math.Round((aLeft - visFirstLeft) * scaleX);
+                int ax2 = (int)Math.Round((aRight - visFirstLeft) * scaleX);
+                int aw = ax2 - ax;
+
+                int ay = AccumulatePixelY(sheet, visFirst.Row, area.Row, scaleY);
+                int ay2 = AccumulatePixelY(sheet, visFirst.Row, area.Row + area.Rows.Count, scaleY);
+                int ah = ay2 - ay;
+
+                if (_shouldLog) Logger.Debug("Spotlight", $"DrawSimple: sel=R{area.Row}C{area.Column}, aLeft={aLeft:F2}, ax={ax}, ay={ay}, aw={aw}, ah={ah}");
+
+                if (ax > 0)
+                    g.FillRectangle(brush, 0, ay, ax, ah);
+                if (ax2 < overlayW)
+                    g.FillRectangle(brush, ax2, ay, overlayW - ax2, ah);
+                if (ay > 0)
+                    g.FillRectangle(brush, ax, 0, aw, ay);
+                if (ay2 < overlayH)
+                    g.FillRectangle(brush, ax, ay2, aw, overlayH - ay2);
+            }
+        }
+
+        /// <summary>
+        /// 冻结/拆分模式下的分窗格绘制逻辑。
+        /// 使用 Pane.PointsToScreenPixelsX/Y 精确获取每个单元格在屏幕上的位置。
+        /// </summary>
+        private void DrawWithPanes(Graphics g, SolidBrush brush,
+            Excel.Window window, Excel.Worksheet sheet, Excel.Range selection,
+            int splitRow, int splitCol, bool isFrozen,
+            int overlayX, int overlayY, int overlayW, int overlayH)
+        {
+            Excel.Panes panes = window.Panes;
+            int paneCount = panes.Count;
+
+            if (_shouldLog) Logger.Debug("Spotlight", $"DrawWithPanes: isFrozen={isFrozen}, splitRow={splitRow}, splitCol={splitCol}, paneCount={paneCount}, overlayW={overlayW}, overlayH={overlayH}");
+
+            foreach (Excel.Range area in selection.Areas)
+            {
+                int selRow = area.Row;
+                int selCol = area.Column;
+                int selRowEnd = selRow + area.Rows.Count;
+                int selColEnd = selCol + area.Columns.Count;
+
+                double selLeft = Convert.ToDouble(((Excel.Range)sheet.Cells[1, selCol]).Left);
+                double selRight = Convert.ToDouble(((Excel.Range)sheet.Cells[1, selColEnd]).Left);
+                double selTop = Convert.ToDouble(((Excel.Range)sheet.Cells[selRow, 1]).Top);
+                double selBottom = Convert.ToDouble(((Excel.Range)sheet.Cells[selRowEnd, 1]).Top);
+
+                for (int i = 0; i < paneCount; i++)
+                {
+                    Excel.Pane pane = panes[i + 1];
+
+                    // 用 Pane.PointsToScreenPixelsX/Y 精确计算屏幕坐标
+                    int ax = pane.PointsToScreenPixelsX((int)selLeft) - overlayX;
+                    int ax2 = pane.PointsToScreenPixelsX((int)selRight) - overlayX;
+                    int aw = ax2 - ax;
+
+                    int ay = pane.PointsToScreenPixelsY((int)selTop) - overlayY;
+                    int ay2 = pane.PointsToScreenPixelsY((int)selBottom) - overlayY;
+                    int ah = ay2 - ay;
+
+                    // 获取 Pane 的可见区域边界
+                    Excel.Range paneVis = pane.VisibleRange;
+                    Excel.Range paneFirst = (Excel.Range)paneVis.Cells[1, 1];
+                    Excel.Range paneLast = (Excel.Range)paneVis.Cells[paneVis.Rows.Count, paneVis.Columns.Count];
+
+                    int paneLeft = pane.PointsToScreenPixelsX((int)Convert.ToDouble(paneFirst.Left)) - overlayX;
+                    int paneTop = pane.PointsToScreenPixelsY((int)Convert.ToDouble(paneFirst.Top)) - overlayY;
+                    int paneRight = pane.PointsToScreenPixelsX((int)(Convert.ToDouble(paneLast.Left) + Convert.ToDouble(paneLast.Width))) - overlayX;
+                    int paneBottom = pane.PointsToScreenPixelsY((int)(Convert.ToDouble(paneLast.Top) + Convert.ToDouble(paneLast.Height))) - overlayY;
+
+                    int pw = paneRight - paneLeft;
+                    int ph = paneBottom - paneTop;
+                    if (pw <= 0 || ph <= 0) continue;
+
+                    if (_shouldLog && i == paneCount - 1)
+                        Logger.Debug("Spotlight", $"  Pane[{i}]: ax={ax}, ay={ay}, aw={aw}, ah={ah}, paneRect=({paneLeft},{paneTop},{pw},{ph})");
+
+                    if (isFrozen)
+                    {
+                        // 行带：在该行可见的 Pane 中画
+                        bool rowVisible = (ay >= paneTop && ay < paneBottom);
+                        if (rowVisible)
+                        {
+                            g.SetClip(new Rectangle(paneLeft, paneTop, pw, ph));
+                            if (ax > paneLeft)
+                                g.FillRectangle(brush, paneLeft, ay, ax - paneLeft, ah);
+                            if (ax2 < paneRight)
+                                g.FillRectangle(brush, ax2, ay, paneRight - ax2, ah);
+                        }
+
+                        // 列带：在该列可见的 Pane 中画
+                        bool colVisible = (ax >= paneLeft && ax < paneRight);
+                        if (colVisible)
+                        {
+                            g.SetClip(new Rectangle(paneLeft, paneTop, pw, ph));
+                            if (ay > paneTop)
+                                g.FillRectangle(brush, ax, paneTop, aw, ay - paneTop);
+                            if (ay2 < paneBottom)
+                                g.FillRectangle(brush, ax, ay2, aw, paneBottom - ay2);
+                        }
+                    }
+                    else
+                    {
+                        // 拆分模式：仅在选中单元格所在的 Pane 内绘制
+                        if (ax >= paneRight || ax2 <= paneLeft) continue;
+                        if (ay >= paneBottom || ay2 <= paneTop) continue;
+
+                        g.SetClip(new Rectangle(paneLeft, paneTop, pw, ph));
+                        if (ax > paneLeft)
+                            g.FillRectangle(brush, paneLeft, ay, ax - paneLeft, ah);
+                        if (ax2 < paneRight)
+                            g.FillRectangle(brush, ax2, ay, paneRight - ax2, ah);
+                        if (ay > paneTop)
+                            g.FillRectangle(brush, ax, paneTop, aw, ay - paneTop);
+                        if (ay2 < paneBottom)
+                            g.FillRectangle(brush, ax, ay2, aw, paneBottom - ay2);
+                    }
+                }
+            }
+
+            g.ResetClip();
+        }
+
+        /// <summary>
+        /// 逐行累加像素高度
         /// </summary>
         private int AccumulatePixelY(Excel.Worksheet sheet, int fromRow, int toRow, double scaleY)
         {
@@ -257,7 +424,6 @@ namespace ExcelCommonTools.Services
             get
             {
                 var cp = base.CreateParams;
-                // WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE
                 cp.ExStyle |= 0x00080000 | 0x00000020 | 0x00000080 | 0x08000000;
                 return cp;
             }

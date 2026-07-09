@@ -29,6 +29,21 @@ namespace ExcelCommonTools
                 var app = (Excel.Application)ExcelDnaUtil.Application;
                 ServiceLocator.Initialize(app);
 
+                // 初始化日志系统
+                File.AppendAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Before Logger.Init, xllDir={Path.GetDirectoryName(ExcelDnaUtil.XllPath)}\r\n");
+                try
+                {
+                    string xllDir = Path.GetDirectoryName(ExcelDnaUtil.XllPath);
+                    string logsDir = Path.Combine(xllDir, "logs");
+                    Logger.Init(logsDir);
+                    File.AppendAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Logger.Init OK, logsDir={logsDir}\r\n");
+                    Logger.Info("AddIn", $"AutoOpen OK. Version={AppConstants.AppVersion}, XllPath={ExcelDnaUtil.XllPath}");
+                }
+                catch (Exception logEx)
+                {
+                    File.AppendAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Logger.Init failed: {logEx.Message}\r\n{logEx.StackTrace}\r\n");
+                }
+
                 // 后台检查更新（不阻塞 Excel 启动）
                 Task.Run(() => CheckForUpdates());
             }

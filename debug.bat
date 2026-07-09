@@ -11,17 +11,14 @@ if %ERRORLEVEL% EQU 0 (
 )
 
 :: Remove installed version registry to avoid conflict with debug
+echo     Cleaning addin registry...
 setlocal enabledelayedexpansion
 for %%V in (14.0 15.0 16.0) do (
     set "REGKEY=HKCU\Software\Microsoft\Office\%%V\Excel\Options"
-    for /L %%i in (0,1,20) do (
-        if %%i==0 (set "VALNAME=OPEN") else (set "VALNAME=OPEN%%i")
-        for /f "tokens=2,*" %%a in ('reg query "!REGKEY!" /v "!VALNAME!" 2^>nul ^| findstr REG_SZ') do (
-            echo %%b | findstr /i "ExcelCommonTools" >nul
-            if !errorlevel! equ 0 (
-                echo     Removing installed addin reg: %%V\!VALNAME!
-                reg delete "!REGKEY!" /v "!VALNAME!" /f >nul 2>&1
-            )
+    for /f "tokens=1,2,*" %%a in ('reg query "!REGKEY!" 2^>nul ^| findstr /i "OPEN"') do (
+        echo %%c | findstr /i "ExcelCommonTools FiKingdee" >nul
+        if !errorlevel! equ 0 (
+            reg delete "!REGKEY!" /v "%%a" /f >nul 2>&1
         )
     )
 )

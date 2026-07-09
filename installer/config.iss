@@ -4,7 +4,7 @@
 
 ; 应用信息
 #define MyAppName        "Excel日常工具"
-#define MyAppVersion     "1.0.3"
+#define MyAppVersion     "1.1.0"
 #define MyAppPublisher   "ExcelCommonTools"
 #define MyAppURL         "https://github.com/your-repo/ExcelCommonTools"
 
