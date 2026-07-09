@@ -20,16 +20,21 @@ namespace ExcelCommonTools
     {
         public void AutoOpen()
         {
+#if DEBUG
             string logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "update_check.log");
+#endif
             try
             {
+#if DEBUG
                 File.AppendAllText(logPath,
                     $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] AutoOpen started. Version={AppConstants.AppVersion}\r\n");
+#endif
 
                 var app = (Excel.Application)ExcelDnaUtil.Application;
                 ServiceLocator.Initialize(app);
 
-                // 初始化日志系统
+                // 初始化日志系统（仅 Debug 模式）
+#if DEBUG
                 File.AppendAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Before Logger.Init, xllDir={Path.GetDirectoryName(ExcelDnaUtil.XllPath)}\r\n");
                 try
                 {
@@ -43,6 +48,7 @@ namespace ExcelCommonTools
                 {
                     File.AppendAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Logger.Init failed: {logEx.Message}\r\n{logEx.StackTrace}\r\n");
                 }
+#endif
 
                 // 后台检查更新（不阻塞 Excel 启动）
                 Task.Run(() => CheckForUpdates());
@@ -50,7 +56,9 @@ namespace ExcelCommonTools
             catch (Exception ex)
             {
                 Debug.WriteLine($"[AddIn] AutoOpen 初始化失败: {ex.Message}");
-                try { File.AppendAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] AutoOpen 失败: {ex.Message}\r\n{ex.StackTrace}\r\n\r\n"); } catch { }
+#if DEBUG
+                try { File.AppendAllText(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "update_check.log"), $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] AutoOpen 失败: {ex.Message}\r\n{ex.StackTrace}\r\n\r\n"); } catch { }
+#endif
             }
         }
 
