@@ -76,7 +76,8 @@ Source: "version.txt"; DestDir: "{app}"; DestName: ".version"; Flags: ignorevers
 Source: "app.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Run]
-Filename: "{cmd}"; Parameters: "/c ""{app}\register.bat"""; Flags: runhidden
+; register.bat 作为备用，主要注册逻辑在 [Code] 的 CurStepChanged 中完成
+; Filename: "{cmd}"; Parameters: "/c ""{app}\register.bat"""; Flags: runhidden
 
 [UninstallRun]
 Filename: "{cmd}"; Parameters: "/c ""{app}\unregister.bat"""; Flags: runhidden waituntilterminated; RunOnceId: "UnregXll"
@@ -85,8 +86,10 @@ Filename: "{cmd}"; Parameters: "/c ""{app}\unregister.bat"""; Flags: runhidden w
 Type: filesandordirs; Name: "{app}\.update_temp"
 Type: filesandordirs; Name: "{app}\.update_backup"
 Type: filesandordirs; Name: "{app}\.update_logs"
+Type: filesandordirs; Name: "{app}\logs"
 Type: files; Name: "{app}\.version"
 Type: files; Name: "{app}\addin.ini"
+Type: filesandordirs; Name: "{app}"
 
 [Code]
 function IsAppRunning(const FileName: string): Boolean;
@@ -137,4 +140,106 @@ begin
       end;
     end;
   end;
+end;
+
+function IsOffice64Bit: Boolean;
+var
+  Platform: String;
+  ExePath: String;
+begin
+  Result := False;
+
+  // 方法1：ClickToRun 安装（Office 2016+/365，最常见）
+  if IsWin64 then
+  begin
+    if RegQueryStringValue(HKLM64, 'SOFTWARE\Microsoft\Office\ClickToRun\Configuration', 'Platform', Platform) then
+    begin
+      Result := (CompareText(Platform, 'x64') = 0);
+      Exit;
+    end;
+  end;
+  if RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Office\ClickToRun\Configuration', 'Platform', Platform) then
+  begin
+    Result := (CompareText(Platform, 'x64') = 0);
+    Exit;
+  end;
+
+  // 方法2：通过 Excel.exe 路径判断（适用于 MSI 安装）
+  // 64 位 Office 装在 Program Files，32 位装在 Program Files (x86)
+  if RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\excel.exe', '', ExePath) then
+  begin
+    Result := (Pos('Program Files (x86)', ExePath) = 0) and (Pos('Program Files', ExePath) > 0);
+    Exit;
+  end;
+  if IsWin64 then
+  begin
+    if RegQueryStringValue(HKLM64, 'SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\excel.exe', '', ExePath) then
+    begin
+      Result := (Pos('Program Files (x86)', ExePath) = 0) and (Pos('Program Files', ExePath) > 0);
+    end;
+  end;
+end;
+
+procedure RegisterXll;
+var
+  XllFile: String;
+  XllPath: String;
+  RegKey: String;
+  ValueName: String;
+  ExistingValue: String;
+  I: Integer;
+  Registered: Boolean;
+begin
+  if IsOffice64Bit then
+    XllFile := '{#AddInBaseName}64.xll'
+  else
+    XllFile := '{#AddInBaseName}.xll';
+
+  XllPath := ExpandConstant('{app}') + '\' + XllFile;
+  Registered := False;
+
+  // 为检测到的 Office 版本注册
+  if RegKeyExists(HKCU, 'Software\Microsoft\Office\16.0\Excel') then
+    RegKey := 'Software\Microsoft\Office\16.0\Excel\Options'
+  else if RegKeyExists(HKCU, 'Software\Microsoft\Office\15.0\Excel') then
+    RegKey := 'Software\Microsoft\Office\15.0\Excel\Options'
+  else if RegKeyExists(HKCU, 'Software\Microsoft\Office\14.0\Excel') then
+    RegKey := 'Software\Microsoft\Office\14.0\Excel\Options'
+  else
+    Exit;
+
+  // 查找已有的注册项（更新）
+  for I := 0 to 5 do
+  begin
+    if I = 0 then ValueName := 'OPEN' else ValueName := 'OPEN' + IntToStr(I);
+    if RegQueryStringValue(HKCU, RegKey, ValueName, ExistingValue) then
+    begin
+      if Pos('{#AddInBaseName}', ExistingValue) > 0 then
+      begin
+        RegWriteStringValue(HKCU, RegKey, ValueName, '/R "' + XllPath + '"');
+        Registered := True;
+        Break;
+      end;
+    end;
+  end;
+
+  // 没有已有项，找空位注册
+  if not Registered then
+  begin
+    for I := 0 to 5 do
+    begin
+      if I = 0 then ValueName := 'OPEN' else ValueName := 'OPEN' + IntToStr(I);
+      if not RegValueExists(HKCU, RegKey, ValueName) then
+      begin
+        RegWriteStringValue(HKCU, RegKey, ValueName, '/R "' + XllPath + '"');
+        Break;
+      end;
+    end;
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    RegisterXll;
 end;

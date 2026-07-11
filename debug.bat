@@ -41,4 +41,4 @@ if %ERRORLEVEL% NEQ 0 (
 
 :: Launch Excel
 echo [2/2] Starting Excel with add-in...
-start "" "C:\PROGRA~2\MICROS~2\Office16\EXCEL.EXE" /x "%~dp0src\bin\Debug\net48\ExcelCommonTools-AddIn.xll" "D:\Excel插件测试\Excel插件测试文件.xlsx"
+start "" "C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE" /x "%~dp0src\bin\Debug\net48\ExcelCommonTools-AddIn64.xll" "D:\Excel插件测试\Excel插件测试文件.xlsx"

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.IO;
-using System.Linq;
 using System.Threading;
 
 namespace ExcelCommonTools.Core
@@ -20,7 +19,6 @@ namespace ExcelCommonTools.Core
         private static readonly object _initLock = new object();
         private static readonly ManualResetEventSlim _signal = new ManualResetEventSlim(false);
         private static readonly long MaxFileSize = 5 * 1024 * 1024; // 5MB
-        private static readonly int MaxFileCount = 5;
         private static readonly int MaxFileAgeDays = 7;
 
         public static void Init(string logDirectory = null)
@@ -155,18 +153,13 @@ namespace ExcelCommonTools.Core
                 var dir = new DirectoryInfo(_logDirectory);
                 if (!dir.Exists) return;
 
-                var logFiles = dir.GetFiles("ExcelCommonTools_*.log")
-                    .OrderBy(f => f.CreationTime).ToList();
-
                 var cutoff = DateTime.Now.AddDays(-MaxFileAgeDays);
-                foreach (var file in logFiles.Where(f => f.CreationTime < cutoff).ToList())
+                foreach (var file in dir.GetFiles("ExcelCommonTools_*.log"))
                 {
-                    try { file.Delete(); logFiles.Remove(file); } catch { }
-                }
-                while (logFiles.Count > MaxFileCount)
-                {
-                    try { logFiles[0].Delete(); } catch { }
-                    logFiles.RemoveAt(0);
+                    if (file.CreationTime < cutoff)
+                    {
+                        try { file.Delete(); } catch { }
+                    }
                 }
             }
             catch { }

@@ -12,15 +12,24 @@ if "%BASE_NAME%"=="" exit /b 1
 
 :: Detect Excel bitness
 set "IS64=0"
-reg query "HKLM\SOFTWARE\Microsoft\Office\ClickToRun\Configuration" /v Platform 2>nul | findstr /i "x64" >nul && set "IS64=1"
+for /f "tokens=2,*" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Office\ClickToRun\Configuration" /v Platform 2^>nul ^| findstr /i "Platform"') do (
+    echo %%b | findstr /i "x64" >nul
+    if !errorlevel! equ 0 set "IS64=1"
+)
 if "!IS64!"=="0" (
     for %%V in (16.0 15.0 14.0) do (
-        if "!IS64!"=="0" reg query "HKLM\SOFTWARE\Microsoft\Office\%%V\Outlook" /v Bitness 2>nul | findstr /i "x64" >nul && set "IS64=1"
+        if "!IS64!"=="0" (
+            for /f "tokens=2,*" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Office\%%V\Outlook" /v Bitness 2^>nul ^| findstr /i "Bitness"') do (
+                echo %%b | findstr /i "x64" >nul
+                if !errorlevel! equ 0 set "IS64=1"
+            )
+        )
     )
 )
 
 if "!IS64!"=="1" (set "XLL_FILE=%BASE_NAME%64.xll") else (set "XLL_FILE=%BASE_NAME%.xll")
 set "XLL_PATH=%INSTALL_DIR%\%XLL_FILE%"
+echo [register] IS64=!IS64!, XLL=%XLL_FILE% >> "%INSTALL_DIR%\register_debug.log"
 
 :: Register for detected Office version only (check 16.0 first as most common)
 for %%V in (16.0 15.0 14.0) do (

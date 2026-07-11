@@ -2,7 +2,6 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
-using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using ExcelDna.Integration;
@@ -33,22 +32,25 @@ namespace ExcelCommonTools
                 var app = (Excel.Application)ExcelDnaUtil.Application;
                 ServiceLocator.Initialize(app);
 
-                // 初始化日志系统（仅 Debug 模式）
-#if DEBUG
-                File.AppendAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Before Logger.Init, xllDir={Path.GetDirectoryName(ExcelDnaUtil.XllPath)}\r\n");
+                // 初始化日志系统（安装路径下 logs 目录）
                 try
                 {
                     string xllDir = Path.GetDirectoryName(ExcelDnaUtil.XllPath);
                     string logsDir = Path.Combine(xllDir, "logs");
                     Logger.Init(logsDir);
-                    File.AppendAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Logger.Init OK, logsDir={logsDir}\r\n");
-                    Logger.Info("AddIn", $"AutoOpen OK. Version={AppConstants.AppVersion}, XllPath={ExcelDnaUtil.XllPath}");
+                    Logger.Info("AddIn", $"AutoOpen started. Version={AppConstants.AppVersion}, XllPath={ExcelDnaUtil.XllPath}");
                 }
                 catch (Exception logEx)
                 {
+                    Debug.WriteLine($"[AddIn] Logger.Init failed: {logEx.Message}");
+#if DEBUG
                     File.AppendAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Logger.Init failed: {logEx.Message}\r\n{logEx.StackTrace}\r\n");
-                }
 #endif
+                }
+
+                // 注册未处理异常捕获（用于排查 Spotlight 等功能导致 Excel 崩溃）
+                AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+                Application.ThreadException += OnThreadException;
 
                 // 后台检查更新（不阻塞 Excel 启动）
                 Task.Run(() => CheckForUpdates());
@@ -56,10 +58,22 @@ namespace ExcelCommonTools
             catch (Exception ex)
             {
                 Debug.WriteLine($"[AddIn] AutoOpen 初始化失败: {ex.Message}");
+                Logger.Error("AddIn", $"AutoOpen 初始化失败: {ex.Message}", ex);
 #if DEBUG
                 try { File.AppendAllText(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "update_check.log"), $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] AutoOpen 失败: {ex.Message}\r\n{ex.StackTrace}\r\n\r\n"); } catch { }
 #endif
             }
+        }
+
+        private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+        {
+            var ex = e.ExceptionObject as Exception;
+            Logger.Error("UnhandledException", ex?.Message ?? "Unknown fatal error", ex);
+        }
+
+        private static void OnThreadException(object sender, System.Threading.ThreadExceptionEventArgs e)
+        {
+            Logger.Error("ThreadException", e.Exception?.Message ?? "Unknown thread error", e.Exception);
         }
 
         public void AutoClose()
@@ -95,14 +109,7 @@ namespace ExcelCommonTools
 
                     string json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
-                    // 调试日志
-                    try
-                    {
-                        string logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "update_check.log");
-                        File.AppendAllText(logPath,
-                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] URL: {checkUrl}\r\n  Response: {json}\r\n\r\n");
-                    }
-                    catch { }
+                    Logger.Debug("UpdateCheck", $"URL: {checkUrl}, Response: {json}");
 
                     var result = ParseCheckResult(json);
 
@@ -139,12 +146,7 @@ namespace ExcelCommonTools
             catch (Exception ex)
             {
                 Debug.WriteLine($"[AddIn] 版本检查失败: {ex.Message}");
-                try
-                {
-                    string logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "update_check.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 版本检查失败: {ex.Message}\r\n{ex.StackTrace}\r\n\r\n");
-                }
-                catch { }
+                Logger.Error("UpdateCheck", $"版本检查失败: {ex.Message}", ex);
             }
         }
 
