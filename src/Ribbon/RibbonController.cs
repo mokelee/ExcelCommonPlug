@@ -261,6 +261,42 @@ namespace ExcelCommonTools.Ribbon
             catch (Exception ex) { ShowError("取消隐藏", ex); }
         }
 
+        public void OnSheetToMarkdown(IRibbonControl control)
+        {
+            try
+            {
+                Excel.Worksheet sheet = Core.ServiceLocator.ActiveSheet;
+                if (sheet == null)
+                {
+                    MessageBox.Show("当前没有活动的工作表。", "日常工具", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                string markdown = new Services.MarkdownService(App).ConvertSheetToMarkdown(sheet);
+                if (string.IsNullOrEmpty(markdown))
+                {
+                    MessageBox.Show("当前工作表没有数据。", "日常工具", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                Clipboard.SetText(markdown);
+                MessageBox.Show("已将工作表内容转换为Markdown格式并复制到剪贴板。", "日常工具", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex) { ShowError("表格转Markdown", ex); }
+        }
+
+        public Bitmap GetSheetToMdImage(IRibbonControl control)
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            using (Stream stream = assembly.GetManifestResourceStream("ExcelCommonTools.Resources.md.png"))
+            {
+                if (stream == null) return null;
+                var bmp = new Bitmap(stream);
+                bmp.MakeTransparent(Color.White);
+                return bmp;
+            }
+        }
+
         #endregion
 
         #region 图形/批注

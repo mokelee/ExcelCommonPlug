@@ -52,6 +52,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Ribbon\CustomRibbon.xml" />
     <EmbeddedResource Include="Resources\spotlight.png" />
+    <EmbeddedResource Include="Resources\md.png" />
   </ItemGroup>
 
   <!-- Excel-DNA .dna file -->
