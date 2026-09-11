@@ -69,11 +69,24 @@ Source: "register.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "unregister.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "addin.ini"; DestDir: "{app}"; Flags: ignoreversion
 
+; === 清理后台 Excel 进程工具（独立 Native AOT exe，开始菜单可执行） ===
+; 不依赖 powershell.exe，可在 AppLocker/SRP 锁定环境正常运行。
+Source: "{#ExcelCleanerExe}"; DestDir: "{app}"; Flags: ignoreversion
+; 额外释放一份到临时目录（dontcopy），供 InitializeSetup 在安装前静默清理时调用
+; （此时文件尚未安装到 {app}，需先 ExtractTemporaryFile 才能运行）。
+Source: "{#ExcelCleanerExe}"; DestName: "ExcelCleaner.exe"; Flags: dontcopy
+
 ; === 版本文件 ===
 Source: "version.txt"; DestDir: "{app}"; DestName: ".version"; Flags: ignoreversion
 
 ; === 图标文件 ===
 Source: "app.ico"; DestDir: "{app}"; Flags: ignoreversion
+
+[Icons]
+; 开始菜单程序组：清理后台残留的 Excel 进程（策略 A：只清理无窗口的幽灵进程）
+; 不指定 IconFilename，使用 ExcelCleaner.exe 内嵌的 clean.ico
+Name: "{group}\清理后台 Excel 进程"; Filename: "{app}\ExcelCleaner.exe"; WorkingDir: "{app}"; Comment: "清理后台残留、无窗口的 Excel 进程，解决插件无法加载的问题"
+Name: "{group}\卸载 {#MyAppName}"; Filename: "{uninstallexe}"; IconFilename: "{app}\app.ico"
 
 [Run]
 ; register.bat 作为备用，主要注册逻辑在 [Code] 的 CurStepChanged 中完成
@@ -111,15 +124,68 @@ begin
   end;
 end;
 
+// 静默清理后台残留的 Excel 幽灵进程（策略 A：只结束「没有主窗口」的 EXCEL.EXE）。
+// 调用独立的 ExcelCleaner.exe --silent（Native AOT，不依赖 powershell.exe，
+// 可在 AppLocker/SRP 锁定环境运行）。返回 ExcelCleaner 的退出码：
+//   0  = 已清理干净，无正在使用的 Excel
+//   10 = 仍有正在使用的 Excel 窗口（有主窗口），未关闭
+//   11 = 有幽灵进程因权限不足无法结束（拒绝访问）
+//   其它/异常 = -1（视为清理未成功）
+function CleanGhostExcel(): Integer;
+var
+  ResultCode: Integer;
+  ExePath: String;
+begin
+  Result := -1;
+  try
+    // InitializeSetup 阶段文件尚未安装到 {app}，先释放临时副本再运行。
+    ExtractTemporaryFile('ExcelCleaner.exe');
+    ExePath := ExpandConstant('{tmp}\ExcelCleaner.exe');
+    if Exec(ExePath, '--silent', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      Result := ResultCode;
+  except
+    // 释放/运行失败：返回 -1，交由下方 IsAppRunning 兜底判断。
+  end;
+end;
+
 function InitializeSetup(): Boolean;
 var
   InstalledVersion: AnsiString;
   VersionFile: String;
+  CleanCode: Integer;
 begin
   Result := True;
+
+  // 安装前先静默清理后台幽灵 Excel 进程，避免被用户看不见、关不掉的残留进程卡住。
   if IsAppRunning('EXCEL.EXE') then
   begin
-    MsgBox('检测到 Excel 正在运行，请先关闭 Excel 再安装。', mbError, MB_OK);
+    CleanCode := CleanGhostExcel();
+
+    // 退出码 10：清理后仍有正在使用的 Excel 窗口，不能擅自结束（会丢数据），
+    // 提示用户手动关闭后再安装。
+    if CleanCode = 10 then
+    begin
+      MsgBox('检测到 Excel 正在使用中，请先保存并关闭所有 Excel 窗口后再安装。', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+
+    // 退出码 11：有幽灵进程因权限不足无法结束，提示以管理员身份重试。
+    if CleanCode = 11 then
+    begin
+      MsgBox('检测到后台残留的 Excel 进程需要更高权限才能清理。' + #13#10 + #13#10 +
+        '请从开始菜单以管理员身份运行「清理后台 Excel 进程」后，再重新安装。', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+
+    Sleep(300);
+  end;
+
+  // 兜底：清理工具异常未成功（返回 -1）且仍检测到 EXCEL.EXE 时，提示用户手动关闭。
+  if IsAppRunning('EXCEL.EXE') then
+  begin
+    MsgBox('检测到 Excel 正在运行，请先保存并关闭所有 Excel 窗口后再安装。', mbError, MB_OK);
     Result := False;
     Exit;
   end;

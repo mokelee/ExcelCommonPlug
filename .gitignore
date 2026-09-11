@@ -1,7 +1,9 @@
 # Build output
-src/bin/
-src/obj/
+bin/
+obj/
+release/
 installer/output/
+ExcelCleanerExe/
 
 # VS
 .vs/

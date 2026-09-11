@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <RootNamespace>ExcelCleaner</RootNamespace>
+    <AssemblyName>ExcelCleaner</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <Version>1.0.0</Version>
+    <Description>清理后台残留的 Excel 幽灵进程（策略 A：只结束无主窗口的 EXCEL.EXE）</Description>
+    <ApplicationIcon>clean.ico</ApplicationIcon>
+
+    <!-- Native AOT：编译为单文件原生 exe，零运行时依赖。
+         AppLocker/SRP 锁定环境下不依赖 powershell.exe，可正常运行。 -->
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <IlcOptimizationPreference>Size</IlcOptimizationPreference>
+  </PropertyGroup>
+
+</Project>

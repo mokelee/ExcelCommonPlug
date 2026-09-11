@@ -28,6 +28,12 @@ namespace ExcelCommonTools.Services
         private string _lastLogKey = "";
         private bool _shouldLog;
 
+        /// <summary>
+        /// 当前处于激活状态的聚光灯实例。用于在插件卸载（AutoClose）时
+        /// 无需持有 Ribbon 实例引用即可完成事件退订与资源释放。
+        /// </summary>
+        private static SpotlightService _activeInstance;
+
         public SpotlightService(Excel.Application app)
         {
             _app = app ?? throw new ArgumentNullException(nameof(app));
@@ -46,6 +52,7 @@ namespace ExcelCommonTools.Services
             _refreshTimer = new Timer { Interval = 100 };
             _refreshTimer.Tick += OnRefreshTick;
             _refreshTimer.Start();
+            _activeInstance = this;
         }
 
         public void Disable()
@@ -61,7 +68,45 @@ namespace ExcelCommonTools.Services
             DisposeBitmap();
             _overlay?.Clear();
             _overlay?.Hide();
+            if (ReferenceEquals(_activeInstance, this))
+                _activeInstance = null;
             Logger.Debug("Spotlight", " Disabled");
+        }
+
+        /// <summary>
+        /// 在插件卸载时调用：若聚光灯仍处于激活状态，退订 Excel 事件、
+        /// 停止定时器并彻底释放覆盖层窗口，避免残留的事件订阅/窗口引用
+        /// 阻止 Excel 进程正常退出。可安全重复调用。
+        /// </summary>
+        public static void ShutdownActive()
+        {
+            var instance = _activeInstance;
+            _activeInstance = null;
+            instance?.ShutdownInternal();
+        }
+
+        private void ShutdownInternal()
+        {
+            try
+            {
+                Disable();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Spotlight", "ShutdownActive Disable 失败", ex);
+            }
+
+            // Disable 只是隐藏覆盖层，卸载阶段需彻底销毁窗口，
+            // 否则其持有的窗口句柄会阻止进程退出。
+            try
+            {
+                _overlay?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Spotlight", "ShutdownActive 释放覆盖层失败", ex);
+            }
+            _overlay = null;
         }
 
         private void OnSelectionChange(object sh, Excel.Range target)

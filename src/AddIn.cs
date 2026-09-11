@@ -76,8 +76,54 @@ namespace ExcelCommonTools
             Logger.Error("ThreadException", e.Exception?.Message ?? "Unknown thread error", e.Exception);
         }
 
+        /// <summary>
+        /// Excel 卸载插件时调用，执行关闭清理，避免 Excel 进程残留在后台。
+        ///
+        /// 背景：Excel 能否退出，取决于 .NET 侧是否已释放全部 COM 对象（RCW）引用，
+        /// 以及是否还有未关闭的窗口 / 未退订的 Excel 事件。只要还有静态字段持有
+        /// Excel.Application，或聚光灯仍订阅着 SheetSelectionChange、覆盖层窗口未销毁，
+        /// Excel 主窗口关闭后进程仍会残留（幽灵 EXCEL.EXE）。
+        ///
+        /// 清理顺序：
+        /// 1. 关闭聚光灯（退订事件、停定时器、销毁覆盖层窗口）；
+        /// 2. 释放 ServiceLocator 持有的 Application RCW 并置空；
+        /// 3. 触发两轮 GC + 终结器等待，回收其它隐式生成的 RCW。
+        /// </summary>
         public void AutoClose()
         {
+            try
+            {
+                Logger.Info("AddIn", "AutoClose 开始执行关闭清理");
+
+                // 1. 关闭聚光灯：退订 Excel 事件、停止定时器、销毁覆盖层窗口。
+                try
+                {
+                    Services.SpotlightService.ShutdownActive();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("AddIn", "AutoClose 关闭聚光灯失败", ex);
+                }
+
+                // 2. 释放并置空 Excel.Application 引用。
+                ServiceLocator.Reset();
+                Logger.Info("AddIn", "AutoClose 已释放 Excel Application 引用");
+
+                // 3. 强制回收隐式生成的 RCW（Range/Cells/Worksheets 等）。
+                //    跑两轮：第一轮 Collect 让终结器排队，WaitForPendingFinalizers 执行终结器，
+                //    第二轮 Collect 回收终结器中释放的对象。
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+
+                Logger.Info("AddIn", "AutoClose 关闭清理完成");
+            }
+            catch (Exception ex)
+            {
+                // 卸载阶段不得抛出异常，仅记录。
+                Logger.Error("AddIn", "AutoClose 异常", ex);
+            }
         }
 
         /// <summary>

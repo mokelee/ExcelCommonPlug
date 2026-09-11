@@ -4,7 +4,7 @@
 
 ; 应用信息
 #define MyAppName        "Excel日常工具"
-#define MyAppVersion     "0.6.5"
+#define MyAppVersion     "0.8.2"
 #define MyAppPublisher   "ExcelCommonTools"
 #define MyAppURL         "https://github.com/your-repo/ExcelCommonTools"
 
@@ -26,6 +26,12 @@
 
 ; UpdateClient 路径 (相对于 installer 目录)
 #define UpdateClientExe  "..\..\UpdateClient\src\bin\Release\net48\UpdateClient.exe"
+
+; ExcelCleaner 清理工具路径 (相对于 installer 目录)
+; 独立 Native AOT 单文件 exe，用于清理后台残留的 Excel 幽灵进程。
+; 不依赖 powershell.exe，可在 AppLocker/SRP 锁定环境正常运行。
+; build.bat 编译后会把 exe 拷到 ExcelCleanerExe 目录，打包从该目录取。
+#define ExcelCleanerExe  "..\ExcelCleanerExe\ExcelCleaner.exe"
 
 ; 输出安装包文件名前缀
 #define OutputName       "ExcelCommonTools_Setup"
