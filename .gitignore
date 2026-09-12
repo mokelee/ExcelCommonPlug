@@ -4,6 +4,7 @@ obj/
 release/
 installer/output/
 ExcelCleanerExe/
+version.iss
 
 # VS
 .vs/
