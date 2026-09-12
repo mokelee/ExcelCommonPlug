@@ -16,6 +16,8 @@
 
 ; 加载项目配置
 #include "config.iss"
+; 加载版本号（由 build.bat 从 CHANGELOG.md 提取后自动生成，请勿手动修改）
+#include "version.iss"
 
 [Setup]
 AppId={{{#MyAppId}}

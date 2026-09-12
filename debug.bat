@@ -24,11 +24,14 @@ for %%V in (14.0 15.0 16.0) do (
 )
 endlocal
 
-:: Read version from config.iss
+:: Read version from CHANGELOG.md (single source of truth)
+:: First heading line "# [x.y.z] - date" holds the latest version.
 set VERSION=1.0.0
-for /f "tokens=3" %%a in ('findstr /c:"#define MyAppVersion" installer\config.iss') do (
-    set "VERSION=%%~a"
+for /f "usebackq tokens=2 delims=[]" %%a in (`findstr /r /c:"^# \[" CHANGELOG.md`) do (
+    set "VERSION=%%a"
+    goto :got_version_debug
 )
+:got_version_debug
 
 :: Build
 echo [1/2] Building (v%VERSION%)...

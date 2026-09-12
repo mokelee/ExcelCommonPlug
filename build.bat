@@ -7,11 +7,18 @@ echo   Excel-DNA AddIn Build Script
 echo ============================================
 echo.
 
-:: 从 installer\config.iss 读取版本号
+:: 从 CHANGELOG.md 读取版本号（版本号唯一数据源）
+:: 首个标题行 "# [x.y.z] - 日期" 即为最新版本
 set VERSION=1.0.0
-for /f "tokens=3" %%a in ('findstr /c:"#define MyAppVersion" installer\config.iss') do (
-    set "VERSION=%%~a"
+for /f "usebackq tokens=2 delims=[]" %%a in (`findstr /r /c:"^# \[" CHANGELOG.md`) do (
+    set "VERSION=%%a"
+    goto :got_version
 )
+:got_version
+
+:: 生成 installer\version.iss，供 setup.iss #include（Inno Setup 使用）
+> "%~dp0installer\version.iss" echo ; 本文件由 build.bat 自动生成，请勿手动修改。版本号唯一来源为 CHANGELOG.md
+>> "%~dp0installer\version.iss" echo #define MyAppVersion "%VERSION%"
 
 set CONFIG=Release
 set SRC_DIR=%~dp0src
@@ -47,20 +54,15 @@ echo      OK
 echo.
 
 :: ============================================
-:: 步骤3: 编译 ExcelCleaner 后台进程清理工具 (Native AOT)
+:: 步骤3: 校验 ExcelCleaner 后台进程清理工具是否存在
+::        (不再每次重新编译，直接使用 ExcelCleanerExe 目录的现成文件)
 :: ============================================
-echo [3/5] Publishing ExcelCleaner (Native AOT)...
-dotnet publish "%CLEANER_DIR%\ExcelCleaner.csproj" -c %CONFIG% -r win-x64
-if errorlevel 1 (
-    echo Error: ExcelCleaner publish failed!
-    pause
-    exit /b 1
-)
-:: 拷贝 exe 到固定目录，供打包步骤使用
-if not exist "%CLEANER_EXE_DIR%" mkdir "%CLEANER_EXE_DIR%"
-copy /y "%CLEANER_DIR%\bin\%CONFIG%\net10.0\win-x64\publish\ExcelCleaner.exe" "%CLEANER_EXE_DIR%\ExcelCleaner.exe" >nul
-if errorlevel 1 (
-    echo Error: Copy ExcelCleaner.exe failed!
+echo [3/5] Checking ExcelCleaner.exe...
+if not exist "%CLEANER_EXE_DIR%\ExcelCleaner.exe" (
+    echo Error: ExcelCleaner.exe not found at "%CLEANER_EXE_DIR%\ExcelCleaner.exe"
+    echo Please build it once manually:
+    echo   dotnet publish "%CLEANER_DIR%\ExcelCleaner.csproj" -c %CONFIG% -r win-x64
+    echo   copy /y "%CLEANER_DIR%\bin\%CONFIG%\net10.0\win-x64\publish\ExcelCleaner.exe" "%CLEANER_EXE_DIR%\ExcelCleaner.exe"
     pause
     exit /b 1
 )

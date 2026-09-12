@@ -4,13 +4,7 @@
 			"path": "."
 		},
 		{
-			"path": "../../CodeCompany/UpdateServer"
-		},
-		{
-			"path": "../UpdateClient"
-		},
-		{
-			"path": "../VBA"
+			"path": "../../CodeCompany/FiKingdee"
 		}
 	],
 	"settings": {}

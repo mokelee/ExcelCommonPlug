@@ -272,10 +272,18 @@ namespace ExcelCommonTools.Ribbon
                     return;
                 }
 
-                string markdown = new Services.MarkdownService(App).ConvertSheetToMarkdown(sheet);
+                var markdownService = new Services.MarkdownService(App);
+                var resolved = markdownService.ResolveConvertRange(sheet);
+                if (!resolved.Success)
+                {
+                    MessageBox.Show(resolved.ErrorMessage, "日常工具", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                string markdown = markdownService.ConvertRangeToMarkdown(resolved.Range);
                 if (string.IsNullOrEmpty(markdown))
                 {
-                    MessageBox.Show("当前工作表没有数据。", "日常工具", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show("所选区域没有可转换的内容。", "日常工具", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
 

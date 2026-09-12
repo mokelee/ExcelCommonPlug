@@ -3,8 +3,9 @@
 ; ============================================================
 
 ; 应用信息
+; 注意：版本号 MyAppVersion 不在此处定义。
+; 版本号唯一数据源为 CHANGELOG.md，由 build.bat 提取后生成 installer\version.iss（setup.iss 会 #include）。
 #define MyAppName        "Excel日常工具"
-#define MyAppVersion     "0.8.2"
 #define MyAppPublisher   "ExcelCommonTools"
 #define MyAppURL         "https://github.com/your-repo/ExcelCommonTools"
 
