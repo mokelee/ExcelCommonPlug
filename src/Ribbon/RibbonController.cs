@@ -280,7 +280,7 @@ namespace ExcelCommonTools.Ribbon
                     return;
                 }
 
-                string markdown = markdownService.ConvertRangeToMarkdown(resolved.Range);
+                string markdown = markdownService.ConvertRangeToMarkdown(resolved);
                 if (string.IsNullOrEmpty(markdown))
                 {
                     MessageBox.Show("所选区域没有可转换的内容。", "日常工具", MessageBoxButtons.OK, MessageBoxIcon.Information);
